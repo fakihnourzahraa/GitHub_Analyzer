@@ -1,0 +1,4 @@
+requests
+rich
+groq
+python-dotenv
