@@ -4,6 +4,8 @@ from rich.table import Table #colors
 from groq import Groq
 from dotenv import load_dotenv #for env
 import os #for env
+from rich.live import Live
+from rich.spinner import Spinner
 
 load_dotenv() 
 console = Console()
@@ -26,7 +28,7 @@ def get_repos(username):
 	return response.json()
 
 def show_profile(user):
-	console.print(f"[bold cyan]👤 {user['name']}[/bold cyan]")
+	console.print(f"[bold cyan]👤 {user['name'] or user['login']}[/bold cyan]")
 	console.print(f"[dim]{user['bio'] or 'No bio'}[/dim]")
 	console.print(f"📦 Public Repos: [yellow]{user['public_repos']}[/yellow]")
 	console.print(f"👥 Followers: [yellow]{user['followers']}[/yellow]\n")
@@ -52,63 +54,62 @@ def get_top_language(repos):
 
 
 def analyze_profile(user, repos, job_requirements):
-    top_lang = get_top_language(repos)
-    repo_names = [r['name'] for r in repos[:10]]
-    languages = list(set(r['language'] for r in repos if r['language']))
+	top_lang = get_top_language(repos)
+	languages = list(set(r['language'] for r in repos if r['language']))
 
-    prompt = f"""
+	prompt = f"""
     GitHub Profile:
     - Name: {user['name'] or user['login']}
     - Public Repos: {user['public_repos']}
     - Followers: {user['followers']}
     - Top Language: {top_lang}
     - Languages used: {', '.join(languages)}
-    - Top repos: {', '.join(repo_names)}
 
     Job Requirements:
     {job_requirements}
     
-    Verify:
-    1. The description given is valid to an extent, should be/related to an actual role not irrelevant
-	2. Use a second person point of view
-    3. Use human like formatting, your response shouldn't seem like ai
-    4. Keep it short if possible
-    5. You may use emojis
-    6. Finish it up with a good luck and a "Thank you for using Github_Summary!"
+ Instructions:
+    - If the job requirements are vague, nonsensical, or clearly not a real role, politely say so and stop.
+    - Speak directly to the person (second person, "you/your").
+    - Be honest, short, and human — not robotic or overly formal.
+    - Only mention followers if the role has a social/community aspect.
+    - You can use emojis but don't overdo it.
+	- Be direct and concise
+    Analyze in this order:
+    1. How strong is this profile for the role?
+    2. What's missing or needs work?
+    3. Two (or more if needed) concrete action points they can act on today.
 
-    Give a short analysis:
-    1. How strong is this profile for the job?
-    2. What's missing or needs improvement?
-    3. Two specific action points.
-
-
-    Be direct and concise.
+    End with a good luck message and "Thank you for using GitHub_Summary! 🚀"
     """
 
-    response = client.chat.completions.create(
+	response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}]
     )
-    return response.choices[0].message.content
+	return response.choices[0].message.content
 
 def main():
-    username = input("Enter GitHub username: ")
-    job_requirements = input("Enter job requirements: ")
+	username = input("Enter GitHub username: ")
+	job_requirements = input("Enter job requirements: ")
 
-    user = get_user(username)
-    if not user:
-        return
+	user = get_user(username)
+	if not user:
+		return
 
-    repos = get_repos(username)
+	repos = get_repos(username)
 
-    show_profile(user)
-    show_repos(repos)
+	show_profile(user)
+	show_repos(repos)
 
-    top_lang = get_top_language(repos)
-    console.print(f"🏆 Top Language: [bold green]{top_lang}[/bold green]\n")
-
-    console.print("[bold yellow]🤖 AI Analysis...[/bold yellow]\n")
-    analysis = analyze_profile(user, repos, job_requirements)
-    console.print(analysis)
+	top_lang = get_top_language(repos)
+	console.print(f"🏆 Top Language: [bold green]{top_lang}[/bold green]\n")
+	with Live(Spinner("dots", text="Analyzing your profile"), refresh_per_second=7):
+		analysis = analyze_profile(user, repos, job_requirements)
+	console.print("done!\n")
+	console.print(analysis)
+    # console.print("[bold yellow]🤖 AI Analysis...[/bold yellow]\n")
+    # analysis = analyze_profile(user, repos, job_requirements)
+    # console.print(analysis)
     
 main()
