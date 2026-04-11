@@ -5,12 +5,13 @@ from groq import Groq
 from dotenv import load_dotenv #for env
 import os #for env
 from rich.live import Live
-from rich.spinner import Spinner
+from rich.spinner import Spinner #waiting for api
 
 load_dotenv() 
 console = Console()
 #console for HTTP calls and table for terminal
 client = Groq(api_key=os.getenv("API_KEY"))
+
 def get_user(username):
 	url = f"https://api.github.com/users/{username}"
 	response = requests.get(url)
@@ -69,7 +70,7 @@ def analyze_profile(user, repos, job_requirements):
     {job_requirements}
     
  Instructions:
-    - If the job requirements are vague, nonsensical, or clearly not a real role, politely say so and stop.
+    - If the job requirements are vague or clearly not a real role ask for calrification
     - Speak directly to the person (second person, "you/your").
     - Be honest, short, and human — not robotic or overly formal.
     - Only mention followers if the role has a social/community aspect.
@@ -89,25 +90,66 @@ def analyze_profile(user, repos, job_requirements):
     )
 	return response.choices[0].message.content
 
+def agent(user,repos):
+	"""Multi-turn conversation with the AI"""
+	messages = []
+
+	# Initial context
+	initial_prompt = f"""
+	You are a GitHub profile analyzer agent. 
+	User profile: {user['name'] or user['login']}
+	Repos: {len(repos)}
+	Top language: {get_top_language(repos)}
+    
+	You will:
+    1. Ask clarifying questions about their goals
+    2. Analyze their fit
+    3. Suggest improvements
+    4. Keep asking until they say they're done
+    
+    Start by asking: What kind of role are you looking for?
+    """
+    
+	messages.append({"role": "user", "content": initial_prompt})
+    
+	while True:
+        # AI responds
+		response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages
+        )
+		ai_message = response.choices[0].message.content
+		console.print(f"\n[bold cyan]Agent:[/bold cyan] {ai_message}\n")
+		messages.append({"role": "assistant", "content": ai_message})
+        
+        # User responds
+		console.print("[yellow]You:[/yellow] ", end="")
+		user_input = input()
+		if user_input.lower() in ['quit', 'done', 'exit']:
+			break
+        
+		messages.append({"role": "user", "content": user_input})
+
 def main():
 	username = input("Enter GitHub username: ")
-	job_requirements = input("Enter job requirements: ")
-
 	user = get_user(username)
 	if not user:
 		return
-
-	repos = get_repos(username)
-
 	show_profile(user)
+	repos = get_repos(username)
 	show_repos(repos)
 
 	top_lang = get_top_language(repos)
 	console.print(f"🏆 Top Language: [bold green]{top_lang}[/bold green]\n")
+	job_requirements = input("Enter job requirements: ")
 	with Live(Spinner("dots", text="Analyzing your profile"), refresh_per_second=7):
 		analysis = analyze_profile(user, repos, job_requirements)
 	console.print("done!\n")
 	console.print(analysis)
+	agent(user,repos)
+	console.print("[cyan]Thank you for using GitHub_Summary, come again! 🚀[/cyan]")
+	return
+
     # console.print("[bold yellow]🤖 AI Analysis...[/bold yellow]\n")
     # analysis = analyze_profile(user, repos, job_requirements)
     # console.print(analysis)
